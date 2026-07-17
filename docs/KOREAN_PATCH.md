@@ -100,7 +100,7 @@ that exist in the base archive and adds their relocated or reclassified
 resources under new names. An O2R override cannot hide the old names, so the
 explicit `--allow-removals` option leaves those unused base entries available.
 With the supported ROMs and this branch, the expected result is 110 added and
-3574 changed resources, for 3684 entries in the generated mod.
+3569 changed resources, for 3679 entries in the generated mod.
 
 Use the unmodified Japanese 1.1 archive as the game's base `oot.o2r` and keep
 the generated patch in `mods`:

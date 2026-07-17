@@ -648,19 +648,19 @@ std::string Extractor::Mkdtemp() {
 extern "C" int zapd_report(int argc, char** argv, std::atomic<size_t>* extractCount, std::atomic<size_t>* totalExtract);
 static void MessageboxWorker();
 
-static void AdjustXmlHexAttribute(std::string& xml, const char* attribute, int adjustment) {
+static void AdjustXmlHexAttributes(std::string& xml, const char* attribute, int adjustment) {
     const std::string prefix = std::string(attribute) + "=\"0x";
-    size_t valueStart = xml.find(prefix);
-    if (valueStart == std::string::npos) {
-        return;
-    }
+    size_t valueStart = 0;
 
-    valueStart += prefix.size();
-    const size_t valueEnd = xml.find('"', valueStart);
-    const unsigned long value = std::stoul(xml.substr(valueStart, valueEnd - valueStart), nullptr, 16);
-    std::stringstream adjustedValue;
-    adjustedValue << std::uppercase << std::hex << static_cast<long>(value) + adjustment;
-    xml.replace(valueStart, valueEnd - valueStart, adjustedValue.str());
+    while ((valueStart = xml.find(prefix, valueStart)) != std::string::npos) {
+        valueStart += prefix.size();
+        const size_t valueEnd = xml.find('"', valueStart);
+        const unsigned long value = std::stoul(xml.substr(valueStart, valueEnd - valueStart), nullptr, 16);
+        std::stringstream adjustedValue;
+        adjustedValue << std::uppercase << std::hex << static_cast<long>(value) + adjustment;
+        xml.replace(valueStart, valueEnd - valueStart, adjustedValue.str());
+        valueStart += adjustedValue.str().size();
+    }
 }
 
 static void ExpandKoreanOverlayXmlRanges(const std::filesystem::path& overlaysPath) {
@@ -673,7 +673,14 @@ static void ExpandKoreanOverlayXmlRanges(const std::filesystem::path& overlaysPa
         std::string xml((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
         input.close();
 
-        AdjustXmlHexAttribute(xml, "RangeStart", -0x10);
+        if (file.path().filename() == "ovl_File_Choose.xml") {
+            // An added instruction moves the Korean overlay's static vertex data forward.
+            AdjustXmlHexAttributes(xml, "RangeStart", 0x10);
+            AdjustXmlHexAttributes(xml, "RangeEnd", 0x10);
+            AdjustXmlHexAttributes(xml, "Offset", 0x10);
+        } else {
+            AdjustXmlHexAttributes(xml, "RangeStart", -0x10);
+        }
 
         std::ofstream output(file.path(), std::ios::out | std::ios::trunc);
         output << xml;
@@ -690,7 +697,7 @@ static void AdjustKoreanAudioXmlOffsets(const std::filesystem::path& audioPath) 
     input.close();
 
     for (const char* tableOffset : tableOffsets) {
-        AdjustXmlHexAttribute(xml, tableOffset, 0x80);
+        AdjustXmlHexAttributes(xml, tableOffset, 0x80);
     }
 
     std::ofstream output(audioPath, std::ios::out | std::ios::trunc);
