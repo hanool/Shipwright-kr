@@ -83,6 +83,7 @@ before extracting the next ROM. Then create the differential mod:
 
 ```bash
 python3 tools/create_o2r_patch.py \
+  --allow-removals \
   "/path/to/oot-jp11.o2r" \
   "/path/to/oot-korean.o2r" \
   "build-cmake/soh/mods/hanmaru-korean.o2r"
@@ -92,7 +93,14 @@ The tool compares decompressed resource contents and writes only added or
 changed resources at their original paths. It omits the base archive control
 entries `version`, `portVersion`, and `manifest.json`. It also rejects unsafe
 paths, duplicate names, empty replacements, resource removals, and existing
-output files.
+output files by default.
+
+The Hanmaru archive omits 44 automatically named overlay vertex resources
+that exist in the base archive and adds their relocated or reclassified
+resources under new names. An O2R override cannot hide the old names, so the
+explicit `--allow-removals` option leaves those unused base entries available.
+With the supported ROMs and this branch, the expected result is 110 added and
+3574 changed resources, for 3684 entries in the generated mod.
 
 Use the unmodified Japanese 1.1 archive as the game's base `oot.o2r` and keep
 the generated patch in `mods`:
