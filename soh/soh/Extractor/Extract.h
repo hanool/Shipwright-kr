@@ -35,6 +35,7 @@ class Extractor {
     bool GetRomPathFromBox();
 
     uint32_t GetRomVerCrc() const;
+    bool IsKoreanPatch() const;
     size_t GetCurRomSize() const;
     bool ValidateAndFixRom();
     bool ValidateRomSize() const;

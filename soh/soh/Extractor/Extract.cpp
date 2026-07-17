@@ -46,6 +46,7 @@
 #include <array>
 #include <fstream>
 #include <filesystem>
+#include <sstream>
 #include <unordered_map>
 #include <string>
 
@@ -65,6 +66,7 @@ static constexpr uint32_t OOT_NTSC_US_MQ = 0xF034001A;
 static constexpr uint32_t OOT_NTSC_JP_MQ = 0xF43B45BA;
 static constexpr uint32_t OOT_NTSC_10 = 0xEC7011B7;
 static constexpr uint32_t OOT_NTSC_11 = 0xD43DA81F;
+static constexpr uint32_t OOT_NTSC_JP_11_KOR = 0x1F29ED87;
 static constexpr uint32_t OOT_NTSC_12 = 0x693BA2AE;
 
 static const std::unordered_map<uint32_t, const char*> verMap = {
@@ -75,11 +77,12 @@ static const std::unordered_map<uint32_t, const char*> verMap = {
     { OOT_NTSC_JP_GC, "NTSC Gamecube JP" }, { OOT_NTSC_JP_GC_CE, "NTSC Gamecube JP (Collector's Edition)" },
     { OOT_NTSC_US_GC, "NTSC MQ US" },       { OOT_NTSC_JP_GC, "NTSC MQ JP" },
     { OOT_NTSC_10, "NTSC N64 1.0" },        { OOT_NTSC_11, "NTSC N64 1.1" },
+    { OOT_NTSC_JP_11_KOR, "NTSC-J N64 1.1 (Korean patch v1.102)" },
     { OOT_NTSC_12, "NTSC N64 1.2" },
 };
 
 // TODO only check the first 54MB of the rom.
-static constexpr std::array<const uint32_t, 21> goodCrcs = {
+static constexpr std::array<const uint32_t, 22> goodCrcs = {
     0xfa8c0555, // MQ DBG 64MB (Original overdump)
     0x8652ac4c, // MQ DBG 64MB
     0x5B8A1EB7, // MQ DBG 64MB (Empty overdump)
@@ -94,6 +97,7 @@ static constexpr std::array<const uint32_t, 21> goodCrcs = {
     0xD0C76FA9, // N64 NTSC JP 1.0
     0x3496EE47, // N64 NTSC US 1.1
     0xA25D1262, // N64 NTSC JP 1.1
+    0xC0AE6EBD, // N64 NTSC JP 1.1, Hanmaru Korean patch v1.102
     0x15736A58, // N64 NTSC US 1.2
     0x83B8967D, // N64 NTSC JP 1.2
     0xD61453DE, // GC NTSC US
@@ -334,6 +338,10 @@ uint32_t Extractor::GetRomVerCrc() const {
     return BSWAP32(((uint32_t*)mRomData.get())[4]);
 }
 
+bool Extractor::IsKoreanPatch() const {
+    return GetRomVerCrc() == OOT_NTSC_JP_11_KOR;
+}
+
 size_t Extractor::GetCurRomSize() const {
     return std::filesystem::file_size(mCurrentRomPath);
 }
@@ -567,6 +575,7 @@ bool Extractor::IsMasterQuest() const {
             return true;
         case OOT_NTSC_10:
         case OOT_NTSC_11:
+        case OOT_NTSC_JP_11_KOR:
         case OOT_NTSC_12:
         case OOT_NTSC_US_GC:
         case OOT_NTSC_JP_GC:
@@ -608,6 +617,7 @@ const char* Extractor::GetZapdVerStr() const {
         case OOT_NTSC_10:
             return "N64_NTSC_10";
         case OOT_NTSC_11:
+        case OOT_NTSC_JP_11_KOR:
             return "N64_NTSC_11";
         case OOT_NTSC_12:
             return "N64_NTSC_12";
@@ -638,8 +648,57 @@ std::string Extractor::Mkdtemp() {
 extern "C" int zapd_report(int argc, char** argv, std::atomic<size_t>* extractCount, std::atomic<size_t>* totalExtract);
 static void MessageboxWorker();
 
+static void AdjustXmlHexAttribute(std::string& xml, const char* attribute, int adjustment) {
+    const std::string prefix = std::string(attribute) + "=\"0x";
+    size_t valueStart = xml.find(prefix);
+    if (valueStart == std::string::npos) {
+        return;
+    }
+
+    valueStart += prefix.size();
+    const size_t valueEnd = xml.find('"', valueStart);
+    const unsigned long value = std::stoul(xml.substr(valueStart, valueEnd - valueStart), nullptr, 16);
+    std::stringstream adjustedValue;
+    adjustedValue << std::uppercase << std::hex << static_cast<long>(value) + adjustment;
+    xml.replace(valueStart, valueEnd - valueStart, adjustedValue.str());
+}
+
+static void ExpandKoreanOverlayXmlRanges(const std::filesystem::path& overlaysPath) {
+    for (const auto& file : std::filesystem::directory_iterator(overlaysPath)) {
+        if (file.path().extension() != ".xml") {
+            continue;
+        }
+
+        std::ifstream input(file.path());
+        std::string xml((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+        input.close();
+
+        AdjustXmlHexAttribute(xml, "RangeStart", -0x10);
+
+        std::ofstream output(file.path(), std::ios::out | std::ios::trunc);
+        output << xml;
+    }
+}
+
+static void AdjustKoreanAudioXmlOffsets(const std::filesystem::path& audioPath) {
+    static constexpr std::array<const char*, 4> tableOffsets = {
+        "SoundFontTableOffset", "SequenceTableOffset", "SampleBankTableOffset", "SequenceFontTableOffset"
+    };
+
+    std::ifstream input(audioPath);
+    std::string xml((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    input.close();
+
+    for (const char* tableOffset : tableOffsets) {
+        AdjustXmlHexAttribute(xml, tableOffset, 0x80);
+    }
+
+    std::ofstream output(audioPath, std::ios::out | std::ios::trunc);
+    output << xml;
+}
+
 bool Extractor::CallZapd(std::string installPath, std::string exportdir, std::atomic<size_t>* extractCount,
-                         std::atomic<size_t>* totalExtract) {
+                          std::atomic<size_t>* totalExtract) {
     constexpr int argc = 22;
     char xmlPath[1024];
     char confPath[1024];
@@ -647,6 +706,7 @@ bool Extractor::CallZapd(std::string installPath, std::string exportdir, std::at
     std::array<const char*, argc> argv;
     const char* version = GetZapdVerStr();
     const char* otrFile = IsMasterQuest() ? "oot-mq.o2r" : "oot.o2r";
+    const bool koreanPatch = IsKoreanPatch();
 
     std::string romPath = std::filesystem::absolute(mCurrentRomPath).string();
     installPath = std::filesystem::absolute(installPath).string();
@@ -654,12 +714,36 @@ bool Extractor::CallZapd(std::string installPath, std::string exportdir, std::at
     // Work this out in the temporary folder
     std::string tempdir = Mkdtemp();
     std::string curdir = std::filesystem::current_path().string();
+
+    if (koreanPatch) {
+        // ZAPD identifies the ROM by CRC1. Normalize only its private extraction copy;
+        // the Korean-patched ROM supplied by the user remains untouched.
+        romPath = tempdir + "/baserom.z64";
+        std::ofstream normalizedRom(romPath, std::ios::out | std::ios::binary);
+        static constexpr std::array<unsigned char, 4> ntsc11Crc1 = { 0xD4, 0x3D, 0xA8, 0x1F };
+        normalizedRom.write((char*)mRomData.get(), 0x10);
+        normalizedRom.write((char*)ntsc11Crc1.data(), ntsc11Crc1.size());
+        normalizedRom.write((char*)mRomData.get() + 0x14, mCurRomSize - 0x14);
+        normalizedRom.close();
+    }
+
 #ifdef _WIN32
     std::filesystem::copy(installPath + "/assets", tempdir + "/assets",
                           std::filesystem::copy_options::recursive | std::filesystem::copy_options::update_existing);
 #else
-    std::filesystem::create_symlink(installPath + "/assets", tempdir + "/assets");
+    if (koreanPatch) {
+        std::filesystem::copy(installPath + "/assets", tempdir + "/assets",
+                              std::filesystem::copy_options::recursive |
+                                  std::filesystem::copy_options::update_existing);
+    } else {
+        std::filesystem::create_symlink(installPath + "/assets", tempdir + "/assets");
+    }
 #endif
+
+    if (koreanPatch) {
+        ExpandKoreanOverlayXmlRanges(tempdir + "/assets/xml/N64_NTSC_11/overlays");
+        AdjustKoreanAudioXmlOffsets(tempdir + "/assets/xml/N64_NTSC_11/audio/Audio.xml");
+    }
 
     std::filesystem::current_path(tempdir);
 
