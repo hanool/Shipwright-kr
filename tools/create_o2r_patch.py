@@ -47,7 +47,9 @@ def _read_entries(path: Path) -> dict[str, bytes]:
         raise PatchError(f"{path} is not a valid O2R archive: {error}") from error
 
 
-def create_patch(base_path: Path, target_path: Path, output_path: Path) -> tuple[int, int]:
+def create_patch(
+    base_path: Path, target_path: Path, output_path: Path, allow_removals: bool = False
+) -> tuple[int, int, int]:
     if output_path.suffix.lower() != ".o2r":
         raise PatchError("the output filename must use the .o2r extension")
     if output_path.exists():
@@ -59,7 +61,7 @@ def create_patch(base_path: Path, target_path: Path, output_path: Path) -> tuple
     target_entries = _read_entries(target_path)
 
     removed = sorted(base_entries.keys() - target_entries.keys())
-    if removed:
+    if removed and not allow_removals:
         preview = ", ".join(removed[:5])
         raise PatchError(
             f"the target removes {len(removed)} entries, which an O2R override cannot represent: {preview}"
@@ -99,7 +101,7 @@ def create_patch(base_path: Path, target_path: Path, output_path: Path) -> tuple
             output_path.unlink(missing_ok=True)
         raise
 
-    return len(added), len(changed)
+    return len(added), len(changed), len(removed)
 
 
 def main(argv=None) -> int:
@@ -109,15 +111,23 @@ def main(argv=None) -> int:
     parser.add_argument("base", type=Path, help="Unmodified base oot.o2r")
     parser.add_argument("target", type=Path, help="Modified full oot.o2r")
     parser.add_argument("output", type=Path, help="Output mod archive ending in .o2r")
+    parser.add_argument(
+        "--allow-removals",
+        action="store_true",
+        help="Create the patch even when target omissions will remain available from the base archive",
+    )
     args = parser.parse_args(argv)
 
     try:
-        added, changed = create_patch(args.base, args.target, args.output)
+        added, changed, removed = create_patch(args.base, args.target, args.output, args.allow_removals)
     except (OSError, PatchError, RuntimeError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
 
-    print(f"Created {args.output} with {added} added and {changed} changed resources.")
+    print(
+        f"Created {args.output} with {added} added and {changed} changed resources; "
+        f"{removed} target removals remain available from the base archive."
+    )
     return 0
 
 

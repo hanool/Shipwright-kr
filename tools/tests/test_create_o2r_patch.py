@@ -48,7 +48,7 @@ class CreateO2rPatchTests(unittest.TestCase):
         )
         output = self.root / "patch.o2r"
 
-        self.assertEqual(create_patch(base, target, output), (1, 1))
+        self.assertEqual(create_patch(base, target, output), (1, 1, 0))
 
         with zipfile.ZipFile(output, "r") as archive:
             self.assertEqual(archive.namelist(), ["text/messages", "textures/kanji/new"])
@@ -62,6 +62,16 @@ class CreateO2rPatchTests(unittest.TestCase):
 
         with self.assertRaisesRegex(PatchError, "cannot represent"):
             create_patch(base, target, self.root / "patch.o2r")
+
+    def test_can_explicitly_allow_removed_resources(self) -> None:
+        base = self.write_archive("base.o2r", [("objects/removed", b"base")])
+        target = self.write_archive("target.o2r", [("objects/added", b"target")])
+        output = self.root / "patch.o2r"
+
+        self.assertEqual(create_patch(base, target, output, allow_removals=True), (1, 0, 1))
+
+        with zipfile.ZipFile(output, "r") as archive:
+            self.assertEqual(archive.namelist(), ["objects/added"])
 
     def test_rejects_duplicate_entries(self) -> None:
         base = self.write_archive("base.o2r", [])
