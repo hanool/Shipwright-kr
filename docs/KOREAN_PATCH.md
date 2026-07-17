@@ -66,5 +66,54 @@ unzip -t oot.o2r
 zipinfo -1 oot.o2r | rg '^text/|^textures/kanji/'
 ```
 
+## Create A Differential Mod
+
+SoH ZIP-based mods use the `.o2r` extension. The legacy `.otr` extension is an
+MPQ archive and must not be used for a renamed ZIP file.
+
+Create two full archives with the same SoH build:
+
+1. Extract `oot-jp11.o2r` from an unmodified NTSC Japanese 1.1 ROM. Its SHA-1
+   is `dbfc81f655187dc6fefd93fa6798face770d579d`.
+2. Extract `oot-korean.o2r` from the supported Hanmaru-patched ROM described
+   above.
+
+The extractor always names its output `oot.o2r`, so move or rename each output
+before extracting the next ROM. Then create the differential mod:
+
+```bash
+python3 tools/create_o2r_patch.py \
+  "/path/to/oot-jp11.o2r" \
+  "/path/to/oot-korean.o2r" \
+  "build-cmake/soh/mods/hanmaru-korean.o2r"
+```
+
+The tool compares decompressed resource contents and writes only added or
+changed resources at their original paths. It omits the base archive control
+entries `version`, `portVersion`, and `manifest.json`. It also rejects unsafe
+paths, duplicate names, empty replacements, resource removals, and existing
+output files.
+
+Use the unmodified Japanese 1.1 archive as the game's base `oot.o2r` and keep
+the generated patch in `mods`:
+
+```text
+build-cmake/soh/
+|-- oot.o2r
+|-- soh-macos
+|-- soh.o2r
+`-- mods/
+    `-- hanmaru-korean.o2r
+```
+
+Restart SoH after adding the mod. New mod archives are enabled automatically;
+the Mods menu can be used to confirm its priority over other resource mods.
+
+Run the patch generator tests with:
+
+```bash
+python3 -m unittest discover -s tools/tests -p 'test_*.py'
+```
+
 Keep the patched ROM and generated `oot.o2r` out of source control and do not
 redistribute either file.
