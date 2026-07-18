@@ -1,3 +1,5 @@
+Ship of Harkinian 한국어 패치 모드 [사용 방법](./docs/KOREAN_PATCH.md)
+
 ![Ship of Harkinian](docs/shiptitle.darkmode.png#gh-dark-mode-only)
 ![Ship of Harkinian](docs/shiptitle.lightmode.png#gh-light-mode-only)
 

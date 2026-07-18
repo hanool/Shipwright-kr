@@ -1,127 +1,133 @@
-# Hanmaru Korean Patch
+# SoH용 한마루 한국어 패치
 
-This branch supports extracting assets from the Hanmaru Korean patch v1.102
-applied to the Japanese Ocarina of Time N64 1.1 ROM. The patch and ROM are not
-included. Use a legally acquired dump and apply the patch yourself.
+이 브랜치는 일본판 Ocarina of Time N64 1.1의 한마루 한국어 패치 v1.102를
+적용하는 SoH용 모드를 작성합니다.
 
-## Supported ROM
+## 원본 및 이용 규칙
 
-Verify the patched ROM before extraction:
+한국어 패치의 원본 제작자는 **한마루**입니다. 패치를 사용하기 전에 [원본
+게시물](https://hanmarus.tistory.com/157)의 이용 규칙을 읽고 준수하세요.
 
-| Property | Expected value |
-| - | - |
-| Size | `33554432` bytes |
-| MD5 | `d4091f8260a0e1aa5eb8681f1021c314` |
-| SHA-1 | `ccbb74e30bd87f3da9b0dac9f05609ad33175f26` |
-| N64 CRC1 | `1F29ED87` |
-| CRC32C | `C0AE6EBD` |
+패치 파일은 원작자 허가 없이 재배포하지 말고 원본 게시물 링크를
+공유하세요. 패치 및 ROM의 상업적 이용도 금지되어 있습니다. 이 저장소에는
+패치와 원본ROM 파일을 포함하지 않습니다.
 
-On macOS, the size and cryptographic hashes can be checked with:
+## 입력 파일
 
-```bash
-stat -f '%z bytes' "/path/to/patched-rom.z64"
-md5 "/path/to/patched-rom.z64"
-shasum "/path/to/patched-rom.z64"
-```
+Big Endian `.z64` 형식만 지원합니다.
 
-## Build On macOS
+| 파일 | 크기 | MD5 | SHA-1 |
+| - | - | - | - |
+| 일본판 1.1 원본 | `33554432` | `1bf5f42b98c3e97948f01155f12e2d88` | `dbfc81f655187dc6fefd93fa6798face770d579d` |
+| 한마루 v1.102 적용본 | `33554432` | `d4091f8260a0e1aa5eb8681f1021c314` | `ccbb74e30bd87f3da9b0dac9f05609ad33175f26` |
 
-Install the dependencies and initialize the submodules:
+한국어 적용본의 추가 식별자는 다음과 같습니다.
 
-```bash
-brew install sdl2 sdl2_net libpng glew ninja cmake tinyxml2 nlohmann-json libzip opusfile libvorbis
-git submodule update --init
-```
+- N64 CRC1: `1F29ED87`
+- CRC32C: `C0AE6EBD`
 
-Configure and build Ship of Harkinian:
+Xdelta 3.0 이상으로 원본 ROM에 한마루 패치를 적용합니다.
 
 ```bash
-cmake -S . -B build-cmake -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build-cmake --target GenerateSohOtr
-cmake --build build-cmake
+xdelta3 -d -s "oot-jp11.z64" "patch.xdelta" "oot-korean.z64"
 ```
 
-## Extract And Launch
-
-Run the executable from its output directory so it can find `soh.o2r`:
+해시는 플랫폼 기본 도구나 Python으로 확인할 수 있습니다.
 
 ```bash
-cd build-cmake/soh
-./soh-macos
+python3 -c "import hashlib,pathlib; p=pathlib.Path('oot-korean.z64'); d=p.read_bytes(); print(len(d), hashlib.md5(d).hexdigest(), hashlib.sha1(d).hexdigest())"
 ```
 
-When prompted, select the verified Korean-patched ROM. Extraction writes
-`oot.o2r` beside the executable and then starts the game. If `oot.o2r` already
-exists, move it aside before launching when you need to extract it again.
+Windows에서는 `python3` 대신 `py -3`을 사용할 수 있습니다.
 
-The extractor does not modify the selected ROM. It creates a private temporary
-copy with the Japanese 1.1 CRC1 expected by ZAPD, adjusts the Korean patch's
-overlay extraction ranges and audio table offsets in private XML copies, and
-deletes the temporary working directory afterward.
+## 빌드
 
-The generated archive can be checked independently:
+`korean-patch` 브랜치를 체크아웃하고 서브모듈을 초기화한 뒤 기존 Shipwright
+빌드 절차를 따릅니다.
 
 ```bash
-unzip -t oot.o2r
-zipinfo -1 oot.o2r | rg '^text/|^textures/kanji/'
+git switch korean-patch
+git submodule update --init --recursive
 ```
 
-## Create A Differential Mod
+- [Shipwright 빌드 안내](BUILDING.md)
 
-SoH ZIP-based mods use the `.o2r` extension. The legacy `.otr` extension is an
-MPQ archive and must not be used for a renamed ZIP file.
+원본 O2R과 한국어 O2R은 반드시 같은 커밋과 같은 빌드에서 추출해야 합니다.
 
-Create two full archives with the same SoH build:
+## 전체 O2R 추출
 
-1. Extract `oot-jp11.o2r` from an unmodified NTSC Japanese 1.1 ROM. Its SHA-1
-   is `dbfc81f655187dc6fefd93fa6798face770d579d`.
-2. Extract `oot-korean.o2r` from the supported Hanmaru-patched ROM described
-   above.
+### 1. 원본 일본판
 
-The extractor always names its output `oot.o2r`, so move or rename each output
-before extracting the next ROM. Then create the differential mod:
+기존 `oot.o2r`을 치운 뒤 빌드한 SoH에 원본 ROM 경로를 전달하거나 파일
+선택 창에서 원본 ROM을 선택합니다.
+
+```text
+<soh 실행 파일> <일본판 1.1 원본.z64 경로>
+```
+
+추출이 끝나면 생성된 파일을 보존합니다.
+
+```bash
+mv oot.o2r oot-jp11.o2r
+```
+
+### 2. 한국어 적용본
+
+같은 실행 파일로 한국어 ROM을 추출합니다.
+
+```text
+<soh 실행 파일> <한마루 v1.102 적용본.z64 경로>
+```
+
+생성된 파일을 구분합니다.
+
+```bash
+mv oot.o2r oot-korean.o2r
+```
+
+최종적으로 다음 두 파일이 필요합니다.
+
+```text
+oot-jp11.o2r
+oot-korean.o2r
+```
+
+## 모드 생성
+
+저장소 루트에서 다음 명령을 실행합니다. 출력 경로의 상위 `mods` 폴더는
+미리 생성되어 있어야 합니다.
 
 ```bash
 python3 tools/create_o2r_patch.py \
   --allow-removals \
   "/path/to/oot-jp11.o2r" \
   "/path/to/oot-korean.o2r" \
-  "build-cmake/soh/mods/hanmaru-korean.o2r"
+  "/path/to/SoH/mods/hanmaru-korean.o2r"
 ```
 
-The tool compares decompressed resource contents and writes only added or
-changed resources at their original paths. It omits the base archive control
-entries `version`, `portVersion`, and `manifest.json`. It also rejects unsafe
-paths, duplicate names, empty replacements, resource removals, and existing
-output files by default.
+PowerShell에서는 `python3` 대신 `py -3`을 사용하고 줄 연결 문자를 `` ` ``로
+바꾸거나 명령을 한 줄로 입력합니다.
 
-The Hanmaru archive omits 44 automatically named overlay vertex resources
-that exist in the base archive and adds their relocated or reclassified
-resources under new names. An O2R override cannot hide the old names, so the
-explicit `--allow-removals` option leaves those unused base entries available.
-With the supported ROMs and this branch, the expected result is 110 added and
-3569 changed resources, for 3679 entries in the generated mod.
+한국어 ROM에는 원본의 자동 생성 오버레이 리소스 44개가 없으며 대응
+리소스가 다른 이름으로 추가되어 있습니다. O2R 오버레이는 삭제를 표현할 수
+없으므로 `--allow-removals`로 사용하지 않는 원본 리소스가 남는 것을
+허용합니다.
 
-Use the unmodified Japanese 1.1 archive as the game's base `oot.o2r` and keep
-the generated patch in `mods`:
+## 검증
 
-```text
-build-cmake/soh/
-|-- oot.o2r
-|-- soh-macos
-|-- soh.o2r
-`-- mods/
-    `-- hanmaru-korean.o2r
+```bash
+python3 -m zipfile -t "/path/to/SoH/mods/hanmaru-korean.o2r"
+python3 -c "import zipfile; print(len(zipfile.ZipFile('/path/to/SoH/mods/hanmaru-korean.o2r').infolist()))"
 ```
 
-Restart SoH after adding the mod. New mod archives are enabled automatically;
-the Mods menu can be used to confirm its priority over other resource mods.
+아카이브 검사가 성공하고 항목 수가 `3679`이면 정상입니다. Windows에서는
+`python3` 대신 `py -3`을 사용합니다.
 
-Run the patch generator tests with:
+생성기 테스트는 다음 명령으로 실행합니다.
 
 ```bash
 python3 -m unittest discover -s tools/tests -p 'test_*.py'
 ```
 
-Keep the patched ROM and generated `oot.o2r` out of source control and do not
-redistribute either file.
+## 참고
+- SoH 설정에서 일본어로 언어를 변경해야 패치가 적용됩니다.
