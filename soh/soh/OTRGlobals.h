@@ -79,6 +79,7 @@ class OTRGlobals {
 #endif
 
 #ifndef __cplusplus
+int RunExtractOnly(const char* romPath, const char* outputDir);
 void InitOTR(int argc, char* argv[]);
 void DeinitOTR(void);
 void OTRMessage_Init();

@@ -40,7 +40,7 @@ class Extractor {
     bool ValidateAndFixRom();
     bool ValidateRomSize() const;
 
-    bool ValidateRom(bool skipCrcBox = false);
+    bool ValidateRom(bool skipCrcBox = false, bool showErrorBoxes = true);
     bool ValidateNotCompressed() const;
     const char* GetZapdVerStr() const;
 
@@ -62,7 +62,7 @@ class Extractor {
 
     void SetSearchPath(const std::string& path);
     void GetRoms(std::vector<std::string>& roms);
-    bool RunFileStandalone(std::string file);
+    bool RunFileStandalone(std::string file, bool showErrorBoxes = true);
     bool Run(std::string searchPath, RomSearchMode searchMode = RomSearchMode::Both);
     bool CallZapd(std::string installPath, std::string exportdir, std::atomic<size_t>* extractCount,
                   std::atomic<size_t>* totalExtract);

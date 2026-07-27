@@ -58,38 +58,30 @@ git submodule update --init --recursive
 
 ### 1. 원본 일본판
 
-기존 `oot.o2r`을 치운 뒤 빌드한 SoH에 원본 ROM 경로를 전달하거나 파일
-선택 창에서 원본 ROM을 선택합니다.
-
-```text
-<soh 실행 파일> <일본판 1.1 원본.z64 경로>
-```
-
-추출이 끝나면 생성된 파일을 보존합니다.
+빌드한 SoH의 헤드리스 추출 명령에 원본 ROM과 출력 폴더를 전달합니다.
 
 ```bash
-mv oot.o2r oot-jp11.o2r
+"/path/to/soh" --extract-only "/path/to/oot-jp11.z64" "/path/to/jp-output"
 ```
+
+추출 결과는 `/path/to/jp-output/oot.o2r`입니다.
 
 ### 2. 한국어 적용본
 
-같은 실행 파일로 한국어 ROM을 추출합니다.
-
-```text
-<soh 실행 파일> <한마루 v1.102 적용본.z64 경로>
-```
-
-생성된 파일을 구분합니다.
+같은 실행 파일로 한국어 ROM을 별도 출력 폴더에 추출합니다.
 
 ```bash
-mv oot.o2r oot-korean.o2r
+"/path/to/soh" --extract-only "/path/to/oot-korean.z64" "/path/to/korean-output"
 ```
+
+추출 결과는 `/path/to/korean-output/oot.o2r`입니다. 이 명령은 창이나 게임
+루프를 시작하지 않습니다.
 
 최종적으로 다음 두 파일이 필요합니다.
 
 ```text
-oot-jp11.o2r
-oot-korean.o2r
+/path/to/jp-output/oot.o2r
+/path/to/korean-output/oot.o2r
 ```
 
 ## 모드 생성
@@ -120,7 +112,7 @@ python3 -m zipfile -t "/path/to/SoH/mods/hanmaru-korean.o2r"
 python3 -c "import zipfile; print(len(zipfile.ZipFile('/path/to/SoH/mods/hanmaru-korean.o2r').infolist()))"
 ```
 
-아카이브 검사가 성공하고 항목 수가 `3679`이면 정상입니다. Windows에서는
+아카이브 검사가 성공하고 항목 수가 `3668`이면 정상입니다. Windows에서는
 `python3` 대신 `py -3`을 사용합니다.
 
 생성기 테스트는 다음 명령으로 실행합니다.

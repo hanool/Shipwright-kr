@@ -6,6 +6,7 @@
 #include "global.h"
 #include "vt.h"
 #include "stdio.h"
+#include <string.h>
 #include <libultraship/bridge/crashhandlerbridge.h>
 #include <soh/Enhancements/bootcommands.h>
 #include "soh/OTRGlobals.h"
@@ -58,6 +59,14 @@ int SDL_main(int argc, char* argv[]) {
 #else //_WIN32
 int main(int argc, char* argv[]) {
 #endif
+    if (argc > 1 && strcmp(argv[1], "--extract-only") == 0) {
+        if (argc != 4) {
+            fprintf(stderr, "Usage: %s --extract-only <rom> <output-dir>\n", argv[0]);
+            return 2;
+        }
+        return RunExtractOnly(argv[2], argv[3]);
+    }
+
     GameConsole_Init();
     InitOTR(argc, argv);
     // TODO: Was moved to below InitOTR because it requires window to be setup. But will be late to catch crashes.

@@ -7,6 +7,7 @@
 #include "Extract.h"
 #include "portable-file-dialogs.h"
 #include <ship/utils/binarytools/BitConverter.h>
+#include <ship/Context.h>
 #include "soh/ShipUtils.h"
 #include "variables.h"
 
@@ -44,6 +45,7 @@
 #include <SDL2/SDL_messagebox.h>
 
 #include <array>
+#include <cstdio>
 #include <fstream>
 #include <filesystem>
 #include <sstream>
@@ -388,13 +390,17 @@ bool Extractor::ValidateRomSize() const {
     return true;
 }
 
-bool Extractor::ValidateRom(bool skipCrcTextBox) {
+bool Extractor::ValidateRom(bool skipCrcTextBox, bool showErrorBoxes) {
     if (!ValidateNotCompressed()) {
-        ShowCompressedErrorBox();
+        if (showErrorBoxes) {
+            ShowCompressedErrorBox();
+        }
         return false;
     }
     if (!ValidateRomSize()) {
-        ShowSizeErrorBox();
+        if (showErrorBoxes) {
+            ShowSizeErrorBox();
+        }
         return false;
     }
     if (!ValidateAndFixRom()) {
@@ -461,7 +467,7 @@ bool Extractor::ManuallySearchForRomMatchingType(RomSearchMode searchMode) {
     return true;
 }
 
-bool Extractor::RunFileStandalone(std::string rom) {
+bool Extractor::RunFileStandalone(std::string rom, bool showErrorBoxes) {
     if (std::filesystem::is_directory(rom)) {
         return false;
     }
@@ -482,7 +488,7 @@ bool Extractor::RunFileStandalone(std::string rom) {
     inFile.close();
     BitConverter::RomToBigEndian(mRomData.get(), mCurRomSize);
 
-    if (!ValidateRom(true)) {
+    if (!ValidateRom(true, showErrorBoxes)) {
         return false;
     }
 
@@ -704,6 +710,36 @@ static void AdjustKoreanAudioXmlOffsets(const std::filesystem::path& audioPath) 
     output << xml;
 }
 
+static void AdjustKoreanCodeXmlOffsets(const std::filesystem::path& codePath) {
+    for (const auto& file : std::filesystem::directory_iterator(codePath)) {
+        if (file.path().extension() != ".xml") {
+            continue;
+        }
+
+        std::ifstream input(file.path());
+        std::string xml((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+        input.close();
+
+        AdjustXmlHexAttributes(xml, "RangeStart", 0x80);
+        AdjustXmlHexAttributes(xml, "RangeEnd", 0x80);
+        AdjustXmlHexAttributes(xml, "Offset", 0x80);
+
+        std::ofstream output(file.path(), std::ios::out | std::ios::trunc);
+        output << xml;
+    }
+}
+
+static void AdjustKoreanTextXmlOffsets(const std::filesystem::path& textPath) {
+    std::ifstream input(textPath);
+    std::string xml((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    input.close();
+
+    AdjustXmlHexAttributes(xml, "CodeOffset", 0x80);
+
+    std::ofstream output(textPath, std::ios::out | std::ios::trunc);
+    output << xml;
+}
+
 bool Extractor::CallZapd(std::string installPath, std::string exportdir, std::atomic<size_t>* extractCount,
                           std::atomic<size_t>* totalExtract) {
     constexpr int argc = 22;
@@ -750,6 +786,8 @@ bool Extractor::CallZapd(std::string installPath, std::string exportdir, std::at
     if (koreanPatch) {
         ExpandKoreanOverlayXmlRanges(tempdir + "/assets/xml/N64_NTSC_11/overlays");
         AdjustKoreanAudioXmlOffsets(tempdir + "/assets/xml/N64_NTSC_11/audio/Audio.xml");
+        AdjustKoreanCodeXmlOffsets(tempdir + "/assets/xml/N64_NTSC_11/code");
+        AdjustKoreanTextXmlOffsets(tempdir + "/assets/xml/N64_NTSC_11/text/message_data_static.xml");
     }
 
     std::filesystem::current_path(tempdir);
@@ -790,6 +828,48 @@ bool Extractor::CallZapd(std::string installPath, std::string exportdir, std::at
     std::filesystem::remove_all(tempdir);
 
     return false;
+}
+
+extern "C" int RunExtractOnly(const char* romPath, const char* outputDir) {
+    try {
+        const std::filesystem::path rom = std::filesystem::absolute(romPath);
+        const std::filesystem::path output = std::filesystem::absolute(outputDir);
+        const std::filesystem::path install = Ship::Context::GetAppBundlePath();
+
+        if (!std::filesystem::is_regular_file(rom)) {
+            fprintf(stderr, "ROM not found: %s\n", rom.string().c_str());
+            return 2;
+        }
+        if (!std::filesystem::is_directory(install / "assets")) {
+            fprintf(stderr, "Extractor assets not found: %s\n", (install / "assets").string().c_str());
+            return 2;
+        }
+
+        std::filesystem::create_directories(output);
+
+        Extractor extractor;
+        if (!extractor.RunFileStandalone(rom.string(), false)) {
+            fprintf(stderr, "Unsupported or invalid ROM: %s\n", rom.string().c_str());
+            return 2;
+        }
+
+        std::atomic<size_t> extractCount = 0;
+        std::atomic<size_t> totalExtract = 0;
+        const std::filesystem::path archive = output / (extractor.IsMasterQuest() ? "oot-mq.o2r" : "oot.o2r");
+        std::filesystem::remove(archive);
+        extractor.CallZapd(install.string(), output.string(), &extractCount, &totalExtract);
+
+        if (!std::filesystem::is_regular_file(archive)) {
+            fprintf(stderr, "Extraction did not create %s\n", archive.string().c_str());
+            return 1;
+        }
+
+        printf("Created %s\n", archive.string().c_str());
+        return 0;
+    } catch (const std::exception& error) {
+        fprintf(stderr, "Extraction failed: %s\n", error.what());
+        return 1;
+    }
 }
 
 static void MessageboxWorker() {
