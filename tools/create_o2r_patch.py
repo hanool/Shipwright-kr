@@ -15,6 +15,32 @@ class PatchError(Exception):
     pass
 
 
+def _normalize_entry(name: str, data: bytes) -> bytes:
+    if not name.startswith("scenes/") or "_room_" not in name or b"Background_" not in data:
+        return data
+
+    # ZAPD does not populate unk_00 or id for format-1 single backgrounds,
+    # but OTRExporter serializes those three uninitialized bytes before the path.
+    normalized = bytearray(data)
+    search_start = 0
+    while (background_pos := data.find(b"Background_", search_start)) != -1:
+        path_start = data.rfind(b"scenes/", search_start, background_pos)
+        fields_start = path_start - 7
+        if path_start < 11:
+            raise PatchError(f"{name} contains an invalid background path")
+
+        path_end = data.find(b"\0", background_pos)
+        path_size = int.from_bytes(data[path_start - 4 : path_start], "little")
+        if path_end == -1 or path_size != path_end - path_start:
+            raise PatchError(f"{name} contains an invalid serialized background path")
+
+        if data[fields_start - 4 : fields_start] == b"\x01\x00\x00\x00":
+            normalized[fields_start:path_start - 4] = b"\x00\x00\x00"
+
+        search_start = path_end + 1
+    return bytes(normalized)
+
+
 def _validate_entry_name(name: str) -> None:
     parts = name.split("/")
     if (
@@ -41,7 +67,7 @@ def _read_entries(path: Path) -> dict[str, bytes]:
             for info in files:
                 _validate_entry_name(info.filename)
                 if info.filename not in IGNORED_ENTRIES:
-                    entries[info.filename] = archive.read(info)
+                    entries[info.filename] = _normalize_entry(info.filename, archive.read(info))
             return entries
     except zipfile.BadZipFile as error:
         raise PatchError(f"{path} is not a valid O2R archive: {error}") from error

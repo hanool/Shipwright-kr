@@ -90,20 +90,22 @@ git submodule update --init --recursive
 미리 생성되어 있어야 합니다.
 
 ```bash
+python3 tools/validate_korean_o2r.py \
+  "/path/to/jp-output/oot.o2r" \
+  "/path/to/korean-output/oot.o2r"
+
 python3 tools/create_o2r_patch.py \
-  --allow-removals \
-  "/path/to/oot-jp11.o2r" \
-  "/path/to/oot-korean.o2r" \
+  "/path/to/jp-output/oot.o2r" \
+  "/path/to/korean-output/oot.o2r" \
   "/path/to/SoH/mods/hanmaru-korean.o2r"
 ```
 
 PowerShell에서는 `python3` 대신 `py -3`을 사용하고 줄 연결 문자를 `` ` ``로
 바꾸거나 명령을 한 줄로 입력합니다.
 
-한국어 ROM에는 원본의 자동 생성 오버레이 리소스 44개가 없으며 대응
-리소스가 다른 이름으로 추가되어 있습니다. O2R 오버레이는 삭제를 표현할 수
-없으므로 `--allow-removals`로 사용하지 않는 원본 리소스가 남는 것을
-허용합니다.
+검증기는 한국어 O2R에 예상하지 않은 `code` 또는 오버레이 변경과 리소스
+추가·누락이 없는지 확인합니다. 검증 실패 시 차등 모드를 만들기 전에 추출
+결과를 조사해야 합니다.
 
 ## 검증
 
@@ -112,7 +114,7 @@ python3 -m zipfile -t "/path/to/SoH/mods/hanmaru-korean.o2r"
 python3 -c "import zipfile; print(len(zipfile.ZipFile('/path/to/SoH/mods/hanmaru-korean.o2r').infolist()))"
 ```
 
-아카이브 검사가 성공하고 항목 수가 `3668`이면 정상입니다. Windows에서는
+아카이브 검사가 성공하고 항목 수가 `3449`이면 정상입니다. Windows에서는
 `python3` 대신 `py -3`을 사용합니다.
 
 생성기 테스트는 다음 명령으로 실행합니다.

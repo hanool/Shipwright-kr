@@ -56,6 +56,42 @@ class CreateO2rPatchTests(unittest.TestCase):
             self.assertEqual(archive.read("textures/kanji/new"), b"glyph")
             self.assertTrue(all(info.date_time == (1980, 1, 1, 0, 0, 0) for info in archive.infolist()))
 
+    def test_normalizes_uninitialized_single_background_fields(self) -> None:
+        room_path = "scenes/shared/link_home_scene/link_home_room_0"
+        background_path = b"scenes/shared/link_home_scene/link_home_room_0Background_000000\0"
+        base_room = bytearray(400)
+        base_room[305:309] = (1).to_bytes(4, "little")
+        base_room[312:316] = (len(background_path) - 1).to_bytes(4, "little")
+        base_room[316 : 316 + len(background_path)] = background_path
+        target_room = bytearray(base_room)
+        target_room[309:312] = b"\x12\x34\x56"
+        base = self.write_archive("base.o2r", [(room_path, bytes(base_room)), ("text/messages", b"base")])
+        target = self.write_archive("target.o2r", [(room_path, bytes(target_room)), ("text/messages", b"target")])
+        output = self.root / "patch.o2r"
+
+        self.assertEqual(create_patch(base, target, output), (0, 1, 0))
+
+        with zipfile.ZipFile(output, "r") as archive:
+            self.assertEqual(archive.namelist(), ["text/messages"])
+
+    def test_preserves_multi_background_fields(self) -> None:
+        room_path = "scenes/shared/shrine_scene/shrine_room_0"
+        background_path = b"scenes/shared/shrine_scene/shrine_room_0Background_000000\0"
+        base_room = bytearray(300)
+        base_room[95:99] = (2).to_bytes(4, "little")
+        base_room[102:106] = (len(background_path) - 1).to_bytes(4, "little")
+        base_room[106 : 106 + len(background_path)] = background_path
+        target_room = bytearray(base_room)
+        target_room[99:102] = b"\x12\x34\x56"
+        base = self.write_archive("base.o2r", [(room_path, bytes(base_room))])
+        target = self.write_archive("target.o2r", [(room_path, bytes(target_room))])
+        output = self.root / "patch.o2r"
+
+        self.assertEqual(create_patch(base, target, output), (0, 1, 0))
+
+        with zipfile.ZipFile(output, "r") as archive:
+            self.assertEqual(archive.read(room_path)[99:102], b"\x12\x34\x56")
+
     def test_rejects_removed_resources(self) -> None:
         base = self.write_archive("base.o2r", [("objects/removed", b"base")])
         target = self.write_archive("target.o2r", [("objects/added", b"target")])

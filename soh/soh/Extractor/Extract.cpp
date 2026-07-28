@@ -45,10 +45,12 @@
 #include <SDL2/SDL_messagebox.h>
 
 #include <array>
+#include <cctype>
 #include <cstdio>
 #include <fstream>
 #include <filesystem>
 #include <sstream>
+#include <stdexcept>
 #include <unordered_map>
 #include <string>
 
@@ -656,20 +658,45 @@ static void MessageboxWorker();
 
 static void AdjustXmlHexAttributes(std::string& xml, const char* attribute, int adjustment) {
     const std::string prefix = std::string(attribute) + "=\"0x";
-    size_t valueStart = 0;
+    size_t attributeStart = 0;
 
-    while ((valueStart = xml.find(prefix, valueStart)) != std::string::npos) {
-        valueStart += prefix.size();
+    while ((attributeStart = xml.find(prefix, attributeStart)) != std::string::npos) {
+        if (attributeStart > 0 && !std::isspace(static_cast<unsigned char>(xml[attributeStart - 1]))) {
+            attributeStart += prefix.size();
+            continue;
+        }
+
+        const size_t valueStart = attributeStart + prefix.size();
         const size_t valueEnd = xml.find('"', valueStart);
         const unsigned long value = std::stoul(xml.substr(valueStart, valueEnd - valueStart), nullptr, 16);
         std::stringstream adjustedValue;
         adjustedValue << std::uppercase << std::hex << static_cast<long>(value) + adjustment;
         xml.replace(valueStart, valueEnd - valueStart, adjustedValue.str());
-        valueStart += adjustedValue.str().size();
+        attributeStart = valueStart + adjustedValue.str().size();
     }
 }
 
-static void ExpandKoreanOverlayXmlRanges(const std::filesystem::path& overlaysPath) {
+static void AdjustKoreanOverlayXmlMetadata(const std::filesystem::path& overlaysPath) {
+    // The Korean overlay table changes VRAM load bases without moving explicit file-relative resources.
+    static const std::unordered_map<std::string, int> baseAddressAdjustments = {
+        { "ovl_Arrow_Fire.xml", -0x10 },       { "ovl_Arrow_Ice.xml", -0x10 },
+        { "ovl_Arrow_Light.xml", -0x10 },      { "ovl_Bg_Ganon_Otyuka.xml", -0x10 },
+        { "ovl_Bg_Jya_Cobra.xml", -0x10 },     { "ovl_Boss_Dodongo.xml", -0x10 },
+        { "ovl_Boss_Ganon.xml", -0x10 },       { "ovl_Boss_Ganon2.xml", -0x10 },
+        { "ovl_Boss_Sst.xml", -0x10 },         { "ovl_Demo_Shd.xml", -0x10 },
+        { "ovl_En_Bili.xml", -0x10 },          { "ovl_En_Clear_Tag.xml", -0x10 },
+        { "ovl_En_Ganon_Mant.xml", -0x10 },    { "ovl_En_Ganon_Organ.xml", -0x10 },
+        { "ovl_En_Holl.xml", 0x10 },           { "ovl_En_Jsjutan.xml", -0x10 },
+        { "ovl_En_Kanban.xml", -0x10 },        { "ovl_En_Sda.xml", -0x10 },
+        { "ovl_En_Ssh.xml", -0x10 },           { "ovl_En_St.xml", -0x10 },
+        { "ovl_En_Sth.xml", -0x10 },           { "ovl_End_Title.xml", -0x10 },
+        { "ovl_Magic_Dark.xml", -0x10 },       { "ovl_Magic_Fire.xml", -0x10 },
+        { "ovl_Magic_Wind.xml", -0x10 },       { "ovl_Oceff_Spot.xml", -0x10 },
+        { "ovl_Oceff_Storm.xml", -0x10 },      { "ovl_Oceff_Wipe.xml", -0x10 },
+        { "ovl_Oceff_Wipe2.xml", -0x10 },      { "ovl_Oceff_Wipe3.xml", -0x10 },
+        { "ovl_Oceff_Wipe4.xml", 0 },
+    };
+
     for (const auto& file : std::filesystem::directory_iterator(overlaysPath)) {
         if (file.path().extension() != ".xml") {
             continue;
@@ -685,7 +712,11 @@ static void ExpandKoreanOverlayXmlRanges(const std::filesystem::path& overlaysPa
             AdjustXmlHexAttributes(xml, "RangeEnd", 0x10);
             AdjustXmlHexAttributes(xml, "Offset", 0x10);
         } else {
-            AdjustXmlHexAttributes(xml, "RangeStart", -0x10);
+            const auto adjustment = baseAddressAdjustments.find(file.path().filename().string());
+            if (adjustment == baseAddressAdjustments.end()) {
+                throw std::runtime_error("Unclassified Korean overlay XML: " + file.path().filename().string());
+            }
+            AdjustXmlHexAttributes(xml, "BaseAddress", adjustment->second);
         }
 
         std::ofstream output(file.path(), std::ios::out | std::ios::trunc);
@@ -711,18 +742,31 @@ static void AdjustKoreanAudioXmlOffsets(const std::filesystem::path& audioPath) 
 }
 
 static void AdjustKoreanCodeXmlOffsets(const std::filesystem::path& codePath) {
+    // Code insertions are cumulative; these late resources all use the final displacement.
+    static const std::unordered_map<std::string, int> codeAdjustments = {
+        { "fbdemo_circle.xml", 0x80 },
+        { "fbdemo_triforce.xml", 0x80 },
+        { "fbdemo_wipe1.xml", 0x80 },
+        { "sys_matrix.xml", 0x80 },
+    };
+
     for (const auto& file : std::filesystem::directory_iterator(codePath)) {
         if (file.path().extension() != ".xml") {
             continue;
+        }
+
+        const auto adjustment = codeAdjustments.find(file.path().filename().string());
+        if (adjustment == codeAdjustments.end()) {
+            throw std::runtime_error("Unclassified Korean code XML: " + file.path().filename().string());
         }
 
         std::ifstream input(file.path());
         std::string xml((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
         input.close();
 
-        AdjustXmlHexAttributes(xml, "RangeStart", 0x80);
-        AdjustXmlHexAttributes(xml, "RangeEnd", 0x80);
-        AdjustXmlHexAttributes(xml, "Offset", 0x80);
+        AdjustXmlHexAttributes(xml, "RangeStart", adjustment->second);
+        AdjustXmlHexAttributes(xml, "RangeEnd", adjustment->second);
+        AdjustXmlHexAttributes(xml, "Offset", adjustment->second);
 
         std::ofstream output(file.path(), std::ios::out | std::ios::trunc);
         output << xml;
@@ -784,7 +828,7 @@ bool Extractor::CallZapd(std::string installPath, std::string exportdir, std::at
 #endif
 
     if (koreanPatch) {
-        ExpandKoreanOverlayXmlRanges(tempdir + "/assets/xml/N64_NTSC_11/overlays");
+        AdjustKoreanOverlayXmlMetadata(tempdir + "/assets/xml/N64_NTSC_11/overlays");
         AdjustKoreanAudioXmlOffsets(tempdir + "/assets/xml/N64_NTSC_11/audio/Audio.xml");
         AdjustKoreanCodeXmlOffsets(tempdir + "/assets/xml/N64_NTSC_11/code");
         AdjustKoreanTextXmlOffsets(tempdir + "/assets/xml/N64_NTSC_11/text/message_data_static.xml");
